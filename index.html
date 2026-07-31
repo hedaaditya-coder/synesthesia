@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Synæsthesia Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:ital,wght@0,300;0,400;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#08080F}
+  body{font-family:'DM Mono',monospace;color:#fff;touch-action:none}
+
+  #canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse 70% 70% at 50% 50%,transparent 25%,#08080F 82%);
+  }
+
+  #topbar{
+    position:fixed;top:0;left:0;right:0;
+    padding:18px 16px;display:flex;justify-content:space-between;align-items:flex-start;
+    z-index:10;
+  }
+  .eyebrow{font-family:'Cormorant Garant',serif;font-size:9px;letter-spacing:.35em;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:2px}
+  .title{font-family:'Cormorant Garant',serif;font-weight:300;font-size:18px;letter-spacing:.06em;color:rgba(255,255,255,.8)}
+
+  .btn{
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+    border-radius:3px;padding:7px 13px;color:rgba(255,255,255,.6);
+    font-size:10px;letter-spacing:.1em;cursor:pointer;
+    transition:all .2s;font-family:'DM Mono',monospace;text-transform:uppercase;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .btn:active{background:rgba(255,255,255,.18)}
+  .btn.on{background:rgba(100,255,160,.12);border-color:rgba(100,255,160,.35);color:rgba(100,255,160,.9)}
+
+  /* LEFT — scrollable track list */
+  #left-panel{
+    position:fixed;left:0;top:50%;transform:translateY(-50%);
+    padding:0 14px;width:175px;max-height:70vh;overflow-y:auto;z-index:10;
+  }
+  .panel-label{font-size:7px;letter-spacing:.25em;color:rgba(255,255,255,.18);margin-bottom:10px}
+  .pill{
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:3px;padding:9px 12px;cursor:pointer;
+    transition:all .2s;margin-bottom:5px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .pill:active,.pill.active{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.3)}
+  .pill-name{font-size:11px;color:rgba(255,255,255,.82);margin-bottom:1px}
+  .pill-artist{font-size:9px;color:rgba(255,255,255,.3)}
+
+  /* RIGHT — params */
+  #right-panel{
+    position:fixed;right:0;top:50%;transform:translateY(-50%);
+    padding:0 16px;width:160px;z-index:10;
+  }
+  .param-row{margin-bottom:10px}
+  .param-head{display:flex;justify-content:space-between}
+  .param-label{font-size:8px;letter-spacing:.1em;color:rgba(255,255,255,.3)}
+  .param-val{font-size:8px;color:rgba(255,255,255,.4)}
+  .bar-bg{height:2px;background:rgba(255,255,255,.07);border-radius:1px;margin-top:3px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:1px;transition:width .7s cubic-bezier(.16,1,.3,1)}
+  .swatch-row{display:flex;gap:5px;margin-top:14px}
+  .swatch{width:20px;height:20px;border-radius:50%}
+
+  /* BOTTOM — track info */
+  #bottom-info{
+    position:fixed;bottom:0;left:175px;right:160px;
+    padding:0 10px 24px;text-align:center;pointer-events:none;
+    z-index:10;opacity:0;transition:opacity .4s;
+  }
+  #bottom-info.show{opacity:1}
+  .track-name{
+    font-family:'Cormorant Garant',serif;font-style:italic;font-weight:300;
+    font-size:clamp(22px,5vw,48px);line-height:1.1;margin-bottom:5px;
+  }
+  .track-sub{font-family:'Cormorant Garant',serif;font-size:13px;color:rgba(255,255,255,.35);letter-spacing:.08em;margin-bottom:12px}
+  .badges{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+  .badge{
+    font-size:8px;letter-spacing:.12em;text-transform:uppercase;
+    border:1px solid rgba(255,255,255,.14);padding:3px 9px;border-radius:2px;
+  }
+
+  /* mic status */
+  #mic-status{font-size:8px;color:rgba(100,255,160,.7);letter-spacing:.1em;margin-top:3px;display:none}
+
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .rise{animation:rise .5s cubic-bezier(.16,1,.3,1) both}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<div id="vignette"></div>
+
+<div id="topbar">
+  <div>
+    <div class="eyebrow">Synæsthesia Engine</div>
+    <div class="title">Music → Vision</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+    <div style="display:flex;gap:6px">
+      <button class="btn" id="btn-mic" onclick="toggleMic()">◎ Mic</button>
+      <button class="btn" onclick="captureFrame()">↓</button>
+    </div>
+    <div id="mic-status">● Live</div>
+  </div>
+</div>
+
+<div id="left-panel">
+  <div class="panel-label">TRACKS</div>
+  <div id="track-list"></div>
+</div>
+
+<div id="right-panel">
+  <div class="panel-label">PARAMETERS</div>
+  <div id="params"></div>
+  <div class="swatch-row">
+    <div class="swatch" id="sw1"></div>
+    <div class="swatch" id="sw2"></div>
+  </div>
+</div>
+
+<div id="bottom-info">
+  <div class="track-name" id="tname"></div>
+  <div class="track-sub" id="tsub"></div>
+  <div class="badges" id="tbadges"></div>
+</div>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────────────
+const PALETTES = {
+  "United States":{p:[255,80,60], s:[60,120,255], label:"American"},
+  "United Kingdom":{p:[180,60,255],s:[60,200,255], label:"British"},
+  "Brazil":        {p:[50,200,80], s:[255,220,40], label:"Brazilian"},
+  "Nigeria":       {p:[255,160,30],s:[80,200,120], label:"Afrobeats"},
+  "India":         {p:[255,120,30],s:[160,60,255], label:"South Asian"},
+  "France":        {p:[100,140,255],s:[255,80,120],label:"French"},
+  "default":       {p:[140,80,255],s:[80,200,255], label:"Global"},
+};
+const ITEXTURES = {strings:"silk",piano:"crystal",electronic:"neon",percussion:"raw",ambient:"mist"};
+const TRACKS = [
+  {id:"t1",name:"Blinding Lights",  artist:"The Weeknd",      origin:"United States",
+   f:{valence:.65,energy:.85,dance:.81,acoustic:.05,tempo:171}, mode:"major",  inst:["electronic","piano"]},
+  {id:"t2",name:"Clair de Lune",    artist:"Debussy",         origin:"France",
+   f:{valence:.35,energy:.10,dance:.20,acoustic:.98,tempo:54},  mode:"minor",  inst:["piano","strings"]},
+  {id:"t3",name:"Savage",           artist:"Wizkid",          origin:"Nigeria",
+   f:{valence:.72,energy:.69,dance:.88,acoustic:.18,tempo:104}, mode:"major",  inst:["electronic","percussion"]},
+  {id:"t4",name:"Fake Plastic Trees",artist:"Radiohead",      origin:"United Kingdom",
+   f:{valence:.12,energy:.28,dance:.35,acoustic:.72,tempo:74},  mode:"minor",  inst:["strings","ambient"]},
+  {id:"t5",name:"Ode to My Family", artist:"The Cranberries", origin:"United Kingdom",
+   f:{valence:.42,energy:.45,dance:.48,acoustic:.60,tempo:90},  mode:"major",  inst:["strings","piano"]},
+  {id:"t6",name:"Passionflower",    artist:"Anoushka Shankar",origin:"India",
+   f:{valence:.55,energy:.55,dance:.60,acoustic:.80,tempo:96},  mode:"augmented",inst:["strings","ambient"]},
+];
+
+function mapV(f, origin) {
+  const pal = PALETTES[origin]||PALETTES["default"];
+  const w=f.valence, e=f.energy, ac=f.acoustic;
+  const rr=(pal.p[0]*w+pal.s[0]*(1-w))/255;
+  const gg=(pal.p[1]*w+pal.s[1]*(1-w))/255;
+  const bb=(pal.p[2]*w+pal.s[2]*(1-w))/255;
+  return {
+    count:Math.floor(600+e*2000), size:1.2+(1-ac)*2.8,
+    turbulence:0.08+(1-ac)*0.85, rotSpeed:(f.tempo/120)*0.003,
+    r:rr,g:gg,b:bb, sr:pal.s[0]/255,sg:pal.s[1]/255,sb:pal.s[2]/255,
+    fluid:ac, density:f.dance, halo:0.5+(1-e)*0.4,
+    pulse:f.tempo/60, warmth:w, energy:e,
+    label:pal.label, tempo:f.tempo,
+  };
+}
+function mood(v){
+  if(v.energy>.8&&v.warmth>.6)return"Euphoric";
+  if(v.energy>.7&&v.warmth<.4)return"Fierce";
+  if(v.energy<.3&&v.warmth>.6)return"Dreamy";
+  if(v.energy<.3&&v.warmth<.4)return"Melancholic";
+  if(v.energy>.5&&v.warmth>.5)return"Radiant";
+  if(v.energy>.5&&v.warmth<.5)return"Electric";
+  return"Hypnotic";
+}
+
+// ── CANVAS 2D RENDERER (no Three.js — Safari safe) ───────────────────────────
+const canvas = document.getElementById("canvas");
+const ctx    = canvas.getContext("2d");
+let W, H;
+
+function resize(){
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// Particle system
+let particles = [];
+let vis = null;
+let audioPulse = 0;
+let clock = 0;
+
+function initParticles(v) {
+  particles = [];
+  const N = v.count;
+  for(let i=0;i<N;i++){
+    const angle  = Math.random()*Math.PI*2;
+    const angle2 = Math.random()*Math.PI*2;
+    const shell  = Math.pow(Math.random(), 0.5);
+    const radius = (80 + shell * Math.min(W,H) * 0.42) * v.halo;
+    const blend  = Math.random();
+    const bright = 0.7 + Math.random()*0.6;
+
+    particles.push({
+      // 3D position on sphere
+      px: Math.sin(angle)*Math.cos(angle2),
+      py: Math.sin(angle)*Math.sin(angle2),
+      pz: Math.cos(angle),
+      r:  radius,
+      cr: Math.min(1,(v.r*blend + v.sr*(1-blend))*bright),
+      cg: Math.min(1,(v.g*blend + v.sg*(1-blend))*bright),
+      cb: Math.min(1,(v.b*blend + v.sb*(1-blend))*bright),
+      size: v.size*(0.4+Math.random()*1.4)*(shell<.25?2:0.9),
+      alpha: 0.15+Math.random()*0.85,
+      phase: Math.random()*Math.PI*2,
+      speed: 0.3+Math.random()*0.7,
+    });
+  }
+}
+
+function drawFrame() {
+  requestAnimationFrame(drawFrame);
+  if(!vis) return;
+  clock += 0.016;
+
+  // Clear with slight trail for glow effect
+  ctx.fillStyle = "rgba(8,8,15,0.18)";
+  ctx.fillRect(0,0,W,H);
+
+  // Aurora background
+  drawAurora();
+
+  const cx = W/2, cy = H/2;
+  const rotY = clock * vis.rotSpeed;
+  const rotX = clock * vis.rotSpeed * 0.3;
+  const pulse = 1 + Math.sin(clock*vis.pulse*0.4)*0.04*vis.energy;
+  const aBoost = 1 + audioPulse*0.25;
+  const scale  = pulse * aBoost * Math.min(W,H) * 0.5;
+
+  // Sort particles back-to-front for additive look
+  const projected = particles.map(p => {
+    // Rotate Y
+    const x1 = p.px*Math.cos(rotY) - p.pz*Math.sin(rotY);
+    const z1 = p.px*Math.sin(rotY) + p.pz*Math.cos(rotY);
+    // Rotate X
+    const y2 = p.py*Math.cos(rotX) - z1*Math.sin(rotX);
+    const z2 = p.py*Math.sin(rotX) + z1*Math.cos(rotX);
+
+    // Turbulence
+    const t = clock*0.5 + p.phase;
+    const tx = Math.sin(t*1.3 + p.py*2)*vis.turbulence*0.15;
+    const ty = Math.cos(t*0.9 + p.px*1.7)*vis.turbulence*0.12;
+
+    const depth = (z2+1)*0.5;
+    const sx = cx + (x1+tx)*p.r * scale/Math.min(W,H) * 1.8;
+    const sy = cy + (y2+ty)*p.r * scale/Math.min(W,H) * 1.8;
+    const sz = p.size * (0.5+depth*0.8) * (1+audioPulse*0.4);
+    const sa = p.alpha * (0.3+depth*0.7);
+    return {sx,sy,sz,sa,p,depth};
+  });
+  projected.sort((a,b)=>a.depth-b.depth);
+
+  // Draw particles
+  for(const {sx,sy,sz,sa,p} of projected){
+    if(sx<-sz||sx>W+sz||sy<-sz||sy>H+sz) continue;
+
+    // Glow layers
+    const r=Math.round(p.cr*255), g=Math.round(p.cg*255), b=Math.round(p.cb*255);
+
+    // Outer halo
+    const g1 = ctx.createRadialGradient(sx,sy,0,sx,sy,sz*3.5);
+    g1.addColorStop(0, `rgba(${r},${g},${b},${sa*0.18})`);
+    g1.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.beginPath(); ctx.arc(sx,sy,sz*3.5,0,Math.PI*2);
+    ctx.fillStyle=g1; ctx.fill();
+
+    // Core glow
+    const g2 = ctx.createRadialGradient(sx,sy,0,sx,sy,sz*1.2);
+    g2.addColorStop(0, `rgba(${Math.min(255,r+80)},${Math.min(255,g+80)},${Math.min(255,b+80)},${sa*0.9})`);
+    g2.addColorStop(0.4, `rgba(${r},${g},${b},${sa*0.5})`);
+    g2.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.beginPath(); ctx.arc(sx,sy,sz*1.2,0,Math.PI*2);
+    ctx.fillStyle=g2; ctx.fill();
+  }
+}
+
+function drawAurora(){
+  const t = clock*0.15;
+  const r=Math.round(vis.r*255), g=Math.round(vis.g*255), b=Math.round(vis.b*255);
+  const sr=Math.round(vis.sr*255), sg=Math.round(vis.sg*255), sb=Math.round(vis.sb*255);
+  const intensity = (0.25 + vis.fluid*0.45) * (1 + audioPulse*0.3);
+
+  for(let i=0;i<4;i++){
+    const xOff = Math.sin(t*(0.7+i*0.2)+i)*W*0.3;
+    const yPos = H*(0.05 + i*0.07 + Math.sin(t*(0.5+i*0.15))*0.04);
+    const w2   = W*(0.4+i*0.1);
+    const h2   = H*(0.08+vis.fluid*0.08);
+    const blend = i/4;
+    const cr = Math.round(r*blend + sr*(1-blend));
+    const cg = Math.round(g*blend + sg*(1-blend));
+    const cb2= Math.round(b*blend + sb*(1-blend));
+
+    const grad = ctx.createRadialGradient(W/2+xOff,yPos,0, W/2+xOff,yPos,w2);
+    grad.addColorStop(0,   `rgba(${cr},${cg},${cb2},${intensity*0.22})`);
+    grad.addColorStop(0.5, `rgba(${cr},${cg},${cb2},${intensity*0.08})`);
+    grad.addColorStop(1,   `rgba(${cr},${cg},${cb2},0)`);
+    ctx.save();
+    ctx.scale(1, h2/w2);
+    ctx.beginPath(); ctx.arc(W/2+xOff, yPos*w2/h2, w2, 0, Math.PI*2);
+    ctx.fillStyle=grad; ctx.fill();
+    ctx.restore();
+  }
+}
+
+drawFrame();
+
+// ── TRACK SELECTION ───────────────────────────────────────────────────────────
+let currentTrack=null, transitioning=false;
+
+function accent(v,a=1){
+  return `rgba(${Math.round(v.r*255)},${Math.round(v.g*255)},${Math.round(v.b*255)},${a})`;
+}
+
+function selectTrack(track){
+  if(transitioning) return;
+  transitioning=true;
+  document.querySelectorAll(".pill").forEach(p=>p.classList.remove("active"));
+  document.getElementById("pill-"+track.id)?.classList.add("active");
+  document.getElementById("bottom-info").classList.remove("show");
+
+  setTimeout(()=>{
+    currentTrack=track;
+    vis=mapV(track.f, track.origin);
+    initParticles(vis);
+    updateUI(track,vis);
+    transitioning=false;
+    const bi=document.getElementById("bottom-info");
+    bi.classList.add("show");
+    const tn=document.getElementById("tname");
+    tn.style.animation="none"; tn.offsetHeight; tn.style.animation="rise .5s both";
+  },320);
+}
+
+function updateUI(track,v){
+  const tn=document.getElementById("tname");
+  tn.textContent=track.name;
+  tn.style.color=accent(v,.92);
+  tn.style.textShadow=`0 0 40px ${accent(v,.5)},0 0 80px ${accent(v,.2)}`;
+  document.getElementById("tsub").textContent=`${track.artist}  ·  ${track.origin}`;
+
+  const instLabel=track.inst.map(i=>ITEXTURES[i]||i).join(" · ");
+  document.getElementById("tbadges").innerHTML=`
+    <span class="badge" style="color:${accent(v,.85)};border-color:${accent(v,.35)}">${mood(v)}</span>
+    <span class="badge" style="color:rgba(255,255,255,.32)">${v.label}</span>
+    <span class="badge" style="color:rgba(255,255,255,.32)">${instLabel}</span>
+  `;
+
+  const pList=[
+    {l:"Energy",    val:v.energy},
+    {l:"Warmth",    val:v.warmth},
+    {l:"Turbulence",val:v.turbulence},
+    {l:"Fluidity",  val:v.fluid},
+    {l:"Density",   val:v.density},
+  ];
+  document.getElementById("params").innerHTML=pList.map(p=>`
+    <div class="param-row">
+      <div class="param-head">
+        <span class="param-label">${p.l.toUpperCase()}</span>
+        <span class="param-val">${(p.val*100).toFixed(0)}</span>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" style="width:${p.val*100}%;background:${accent(v,.75)}"></div></div>
+    </div>
+  `).join("");
+
+  const r=v=>Math.round(v*255);
+  document.getElementById("sw1").style.cssText=`background:rgb(${r(v.r)},${r(v.g)},${r(v.b)});box-shadow:0 0 10px ${accent(v,.7)}`;
+  document.getElementById("sw2").style.cssText=`background:rgb(${r(v.sr)},${r(v.sg)},${r(v.sb)});box-shadow:0 0 8px rgba(${r(v.sr)},${r(v.sg)},${r(v.sb)},.5)`;
+}
+
+// Build list
+const list=document.getElementById("track-list");
+TRACKS.forEach(t=>{
+  const el=document.createElement("div");
+  el.className="pill"; el.id="pill-"+t.id;
+  el.innerHTML=`<div class="pill-name">${t.name}</div><div class="pill-artist">${t.artist}</div>`;
+  el.onclick=()=>selectTrack(t);
+  list.appendChild(el);
+});
+setTimeout(()=>selectTrack(TRACKS[0]),500);
+
+// ── MIC ───────────────────────────────────────────────────────────────────────
+let micCtx=null,micAnalyser=null,micStream=null,micRaf=null,micOn=false;
+
+async function toggleMic(){
+  if(micOn){stopMic();return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    micCtx=new(window.AudioContext||window.webkitAudioContext)();
+    micAnalyser=micCtx.createAnalyser();
+    micAnalyser.fftSize=512;
+    micCtx.createMediaStreamSource(stream).connect(micAnalyser);
+    const buf=new Uint8Array(micAnalyser.frequencyBinCount);
+    micStream=stream; micOn=true;
+    document.getElementById("btn-mic").classList.add("on");
+    document.getElementById("btn-mic").textContent="◉ Live";
+    document.getElementById("mic-status").style.display="block";
+    const tick=()=>{
+      micRaf=requestAnimationFrame(tick);
+      micAnalyser.getByteFrequencyData(buf);
+      const avg=buf.slice(0,48).reduce((a,b)=>a+b,0)/48;
+      audioPulse=avg/255;
+    };
+    tick();
+  }catch(e){
+    alert("Mic access denied. Please allow microphone in Safari Settings → hedaaditya-coder.github.io → Microphone.");
+  }
+}
+
+function stopMic(){
+  if(micRaf)cancelAnimationFrame(micRaf);
+  if(micStream)micStream.getTracks().forEach(t=>t.stop());
+  if(micCtx)micCtx.close();
+  audioPulse=0;micOn=false;
+  document.getElementById("btn-mic").classList.remove("on");
+  document.getElementById("btn-mic").textContent="◎ Mic";
+  document.getElementById("mic-status").style.display="none";
+}
+
+// ── CAPTURE ───────────────────────────────────────────────────────────────────
+function captureFrame(){
+  // Draw one clean frame first
+  const name=(currentTrack?.name||"frame").replace(/\s/g,"_");
+  const a=document.createElement("a");
+  a.download=`synesthesia-${name}.png`;
+  a.href=canvas.toDataURL("image/png");
+  a.click();
+}
+</script>
+</body>
+</html>
