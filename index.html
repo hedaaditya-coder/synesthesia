@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Synæsthesia Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garant:ital,wght@0,300;0,400;1,300;1,400&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#08080F}
+  body{font-family:'DM Mono',monospace;color:#fff;touch-action:none}
+  #canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse 75% 75% at 50% 50%,transparent 20%,#08080F 78%)}
+  #topbar{position:fixed;top:0;left:0;right:0;padding:18px 16px;
+    display:flex;justify-content:space-between;align-items:flex-start;z-index:10}
+  .eyebrow{font-family:'Cormorant Garant',serif;font-size:9px;letter-spacing:.35em;
+    text-transform:uppercase;color:rgba(255,255,255,.25);margin-bottom:2px}
+  .title{font-family:'Cormorant Garant',serif;font-weight:300;font-size:18px;
+    letter-spacing:.06em;color:rgba(255,255,255,.78)}
+  .btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+    border-radius:2px;padding:7px 13px;color:rgba(255,255,255,.5);font-size:9px;
+    letter-spacing:.12em;cursor:pointer;transition:all .2s;font-family:'DM Mono',monospace;
+    text-transform:uppercase;-webkit-tap-highlight-color:transparent}
+  .btn:active{background:rgba(255,255,255,.16)}
+  .btn.on{background:rgba(100,255,160,.1);border-color:rgba(100,255,160,.32);color:rgba(100,255,160,.88)}
+  #left-panel{position:fixed;left:0;top:50%;transform:translateY(-50%);
+    padding:0 14px;width:175px;max-height:74vh;overflow-y:auto;z-index:10}
+  .panel-label{font-size:7px;letter-spacing:.25em;color:rgba(255,255,255,.16);margin-bottom:10px}
+  .pill{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+    border-radius:2px;padding:9px 12px;cursor:pointer;transition:all .22s;margin-bottom:5px;
+    -webkit-tap-highlight-color:transparent}
+  .pill:active,.pill.active{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.28)}
+  .pill-name{font-size:11px;color:rgba(255,255,255,.82);margin-bottom:1px}
+  .pill-artist{font-size:9px;color:rgba(255,255,255,.27)}
+  #right-panel{position:fixed;right:0;top:50%;transform:translateY(-50%);
+    padding:0 16px;width:158px;z-index:10}
+  .param-row{margin-bottom:10px}
+  .param-head{display:flex;justify-content:space-between}
+  .param-label{font-size:8px;letter-spacing:.1em;color:rgba(255,255,255,.28)}
+  .param-val{font-size:8px;color:rgba(255,255,255,.38)}
+  .bar-bg{height:2px;background:rgba(255,255,255,.07);border-radius:1px;margin-top:3px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:1px;transition:width .75s cubic-bezier(.16,1,.3,1)}
+  .sig-row{margin-top:16px;padding-top:13px;border-top:1px solid rgba(255,255,255,.05)}
+  .sig-val{font-size:10px;color:rgba(255,255,255,.38);margin-bottom:3px}
+  .swatch-row{display:flex;gap:5px;margin-top:12px}
+  .swatch{width:20px;height:20px;border-radius:50%}
+  #bottom-info{position:fixed;bottom:0;left:175px;right:158px;
+    padding:0 12px 24px;text-align:center;pointer-events:none;z-index:10;
+    opacity:0;transition:opacity .4s}
+  #bottom-info.show{opacity:1}
+  .track-name{font-family:'Cormorant Garant',serif;font-style:italic;font-weight:300;
+    font-size:clamp(22px,4.8vw,50px);line-height:1.05;margin-bottom:5px}
+  .track-sub{font-family:'Cormorant Garant',serif;font-size:13px;
+    color:rgba(255,255,255,.33);letter-spacing:.09em;margin-bottom:12px}
+  .badges{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+  .badge{font-size:8px;letter-spacing:.12em;text-transform:uppercase;
+    border:1px solid rgba(255,255,255,.13);padding:3px 9px;border-radius:2px}
+  #live-bars{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    display:none;gap:3px;align-items:flex-end;height:28px;z-index:10}
+  #live-bars.show{display:flex}
+  .bar-band{width:3px;border-radius:1px;background:rgba(255,255,255,.35);
+    transition:height .05s linear;min-height:2px}
+  #mic-label{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);
+    font-size:8px;letter-spacing:.18em;color:rgba(100,255,160,.6);display:none;z-index:10}
+  #mic-label.show{display:block}
+  @keyframes rise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="vignette"></div>
+
+<div id="topbar">
+  <div>
+    <div class="eyebrow">Synæsthesia Engine</div>
+    <div class="title">Music → Vision</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+    <div style="display:flex;gap:6px">
+      <button class="btn" id="btn-mic" onclick="toggleMic()">◎ Mic</button>
+      <button class="btn" onclick="captureFrame()">↓</button>
+    </div>
+  </div>
+</div>
+
+<div id="left-panel">
+  <div class="panel-label">TRACKS</div>
+  <div id="track-list"></div>
+</div>
+
+<div id="right-panel">
+  <div class="panel-label">VISUAL PARAMETERS</div>
+  <div id="params"></div>
+  <div class="sig-row">
+    <div class="panel-label">SIGNAL</div>
+    <div class="sig-val" id="sig-p"></div>
+    <div class="sig-val" id="sig-b"></div>
+    <div class="sig-val" id="sig-pal"></div>
+  </div>
+  <div class="swatch-row">
+    <div class="swatch" id="sw1"></div>
+    <div class="swatch" id="sw2"></div>
+  </div>
+</div>
+
+<div id="bottom-info">
+  <div class="track-name" id="tname"></div>
+  <div class="track-sub"  id="tsub"></div>
+  <div class="badges"     id="tbadges"></div>
+</div>
+
+<!-- Live freq bars -->
+<div id="mic-label">● AUDIO REACTIVE</div>
+<div id="live-bars">
+  <div class="bar-band" id="bb0"></div>
+  <div class="bar-band" id="bb1"></div>
+  <div class="bar-band" id="bb2"></div>
+  <div class="bar-band" id="bb3"></div>
+  <div class="bar-band" id="bb4"></div>
+  <div class="bar-band" id="bb5"></div>
+  <div class="bar-band" id="bb6"></div>
+  <div class="bar-band" id="bb7"></div>
+</div>
+
+<script id="vert-shader" type="x-shader/x-vertex">
+precision highp float;
+attribute vec3 aPos;
+attribute float aSize;
+attribute vec3 aCol;
+attribute float aAlpha;
+attribute float aPhase;
+attribute float aShell;
+
+uniform mat4 uProj;
+uniform mat4 uView;
+uniform float uTime;
+uniform float uTurb;
+uniform float uEnergy;
+uniform float uBass;
+uniform float uMid;
+uniform float uHigh;
+uniform float uRotY;
+uniform float uRotX;
+uniform float uBreath;
+
+varying vec3  vCol;
+varying float vAlpha;
+
+// 3D rotation helpers
+vec3 rotY(vec3 p, float a){
+  float c=cos(a),s=sin(a);
+  return vec3(p.x*c+p.z*s, p.y, -p.x*s+p.z*c);
+}
+vec3 rotX(vec3 p, float a){
+  float c=cos(a),s=sin(a);
+  return vec3(p.x, p.y*c-p.z*s, p.y*s+p.z*c);
+}
+
+void main(){
+  vCol   = aCol;
+  vAlpha = aAlpha;
+
+  vec3 p = aPos;
+  float t = uTime * 0.5 + aPhase;
+
+  // Organic fluid drift — each axis independent, multi-frequency
+  float bassWarp  = uBass  * 0.28;
+  float midWarp   = uMid   * 0.14;
+  float highWarp  = uHigh  * 0.08;
+
+  p.x += (sin(t*1.2 + p.y*1.8)*0.08 + sin(t*2.1 + p.z*1.2)*0.04) * uTurb
+       + sin(t*2.8 + aPhase)*bassWarp*0.18;
+  p.y += (cos(t*0.85+ p.x*1.6)*0.07 + cos(t*1.6 + p.z*1.9)*0.03) * uTurb
+       + cos(t*2.2 + aPhase)*midWarp*0.18;
+  p.z += (sin(t*1.0 + p.y*1.2)*0.06 + sin(t*1.9 + p.x*0.8)*0.03) * uTurb
+       + sin(t*1.7 + aPhase)*highWarp*0.18;
+
+  // Global rotation — smooth and continuous
+  p = rotY(p, uRotY);
+  p = rotX(p, uRotX);
+
+  // Breathing scale — gentle, audio gives a nudge not a jolt
+  float scale = uBreath * (1.0 + uBass*0.10 + uMid*0.04);
+  p *= scale;
+
+  vec4 mvp = uProj * uView * vec4(p, 1.0);
+
+  // Size: depth-correct but capped to prevent blowout
+  float bandBoost = 1.0 + uBass*0.35 + uMid*0.18 + uHigh*0.08;
+  float depthScale = clamp(120.0 / max(-mvp.z, 0.5), 0.5, 18.0);
+  gl_PointSize = clamp(aSize * depthScale * (0.6 + uEnergy*0.4) * bandBoost, 0.5, 48.0);
+  gl_Position  = mvp;
+}
+</script>
+
+<script id="frag-shader" type="x-shader/x-fragment">
+precision highp float;
+varying vec3  vCol;
+varying float vAlpha;
+
+void main(){
+  vec2  uv = gl_PointCoord - 0.5;
+  float d  = length(uv);
+  if(d > 0.5) discard;
+  // Tight luminous core — colour preserved, no white blowout
+  float core = 1.0 - smoothstep(0.0, 0.14, d);
+  float body = 1.0 - smoothstep(0.0, 0.35, d);
+  float halo = pow(max(0.0, 1.0 - d*2.0), 3.5);
+  float a    = (core*0.72 + body*0.28 + halo*0.10) * vAlpha;
+  // Slight brightness at core without losing hue
+  vec3  col  = mix(vCol, vCol + vec3(0.15), core*0.5);
+  gl_FragColor = vec4(col, a);
+}
+</script>
+
+<script id="aurora-vert" type="x-shader/x-vertex">
+attribute vec2 aPos;
+varying vec2 vUv;
+void main(){ vUv = aPos*0.5+0.5; gl_Position = vec4(aPos,0.0,1.0); }
+</script>
+
+<script id="aurora-frag" type="x-shader/x-fragment">
+precision mediump float;
+varying vec2 vUv;
+uniform float uTime;
+uniform vec3  uCol1;
+uniform vec3  uCol2;
+uniform float uIntensity;
+uniform float uBass;
+uniform float uMid;
+
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){
+  vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),
+             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+}
+float fbm(vec2 p){
+  return noise(p)*0.5 + noise(p*2.1+vec2(1.7,9.2))*0.25 + noise(p*4.3+vec2(8.3,2.8))*0.125;
+}
+
+void main(){
+  float t  = uTime * 0.12;
+  vec2  uv = vUv;
+
+  // Layered noise for flowing curtain
+  float n  = fbm(vec2(uv.x*2.5 + t, uv.y*1.2 - t*0.35));
+  float n2 = fbm(vec2(uv.x*4.0 - t*0.5 + n*0.4, uv.y*2.0 + t*0.2));
+  float shape = smoothstep(0.28, 0.72, n*0.6 + n2*0.4);
+
+  // Curtain: dense top edge, fade bottom
+  float curtain = pow(1.0-uv.y, 1.4)*0.6 + smoothstep(0.0,0.3,1.0-uv.y)*0.2;
+  shape *= curtain * uIntensity * (1.0 + uBass*0.5 + uMid*0.2);
+
+  vec3 c = mix(uCol1, uCol2, n2);
+  gl_FragColor = vec4(c * shape, shape * 0.38);
+}
+</script>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────────────
+const PALETTES={
+  "United States":{p:[255,80,60], s:[60,120,255], label:"American"},
+  "United Kingdom":{p:[180,60,255],s:[60,200,255], label:"British"},
+  "Brazil":        {p:[50,200,80], s:[255,220,40], label:"Brazilian"},
+  "Nigeria":       {p:[255,160,30],s:[80,200,120], label:"Afrobeats"},
+  "India":         {p:[255,120,30],s:[160,60,255], label:"South Asian"},
+  "France":        {p:[100,140,255],s:[255,80,120],label:"French"},
+  "default":       {p:[140,80,255],s:[80,200,255], label:"Global"},
+};
+const ITEXTURES={strings:"silk",piano:"crystal",electronic:"neon",percussion:"raw",ambient:"mist"};
+const TRACKS=[
+  {id:"t1",name:"Blinding Lights",   artist:"The Weeknd",      origin:"United States",
+   f:{valence:.65,energy:.85,dance:.81,acoustic:.05,instru:.00,tempo:171},mode:"major",    inst:["electronic","piano"]},
+  {id:"t2",name:"Clair de Lune",     artist:"Debussy",         origin:"France",
+   f:{valence:.35,energy:.10,dance:.20,acoustic:.98,instru:.99,tempo:54}, mode:"minor",    inst:["piano","strings"]},
+  {id:"t3",name:"Savage",            artist:"Wizkid",          origin:"Nigeria",
+   f:{valence:.72,energy:.69,dance:.88,acoustic:.18,instru:.02,tempo:104},mode:"major",    inst:["electronic","percussion"]},
+  {id:"t4",name:"Fake Plastic Trees",artist:"Radiohead",       origin:"United Kingdom",
+   f:{valence:.12,energy:.28,dance:.35,acoustic:.72,instru:.08,tempo:74}, mode:"minor",    inst:["strings","ambient"]},
+  {id:"t5",name:"Ode to My Family",  artist:"The Cranberries", origin:"United Kingdom",
+   f:{valence:.42,energy:.45,dance:.48,acoustic:.60,instru:.01,tempo:90}, mode:"major",    inst:["strings","piano"]},
+  {id:"t6",name:"Passionflower",     artist:"Anoushka Shankar",origin:"India",
+   f:{valence:.55,energy:.55,dance:.60,acoustic:.80,instru:.85,tempo:96}, mode:"augmented",inst:["strings","ambient"]},
+];
+
+function mapV(f,origin){
+  const pal=PALETTES[origin]||PALETTES["default"];
+  const w=f.valence,e=f.energy,ac=f.acoustic;
+  return{
+    count:  Math.floor(700+e*2200),
+    size:   1.4+(1-ac)*2.9,
+    turb:   0.06+(1-ac)*0.88,
+    rotSpd: (f.tempo/120)*0.0028,
+    r:(pal.p[0]*w+pal.s[0]*(1-w))/255,
+    g:(pal.p[1]*w+pal.s[1]*(1-w))/255,
+    b:(pal.p[2]*w+pal.s[2]*(1-w))/255,
+    sr:pal.s[0]/255, sg:pal.s[1]/255, sb:pal.s[2]/255,
+    fluid:ac, density:f.dance,
+    halo:0.45+(1-e)*0.42,
+    pulse:f.tempo/60,
+    warmth:w, energy:e,
+    label:pal.label, tempo:f.tempo,
+    bloom:0.3+e*1.1,
+  };
+}
+function mood(v){
+  if(v.energy>.8&&v.warmth>.6)return"Euphoric";
+  if(v.energy>.7&&v.warmth<.4)return"Fierce";
+  if(v.energy<.3&&v.warmth>.6)return"Dreamy";
+  if(v.energy<.3&&v.warmth<.4)return"Melancholic";
+  if(v.energy>.5&&v.warmth>.5)return"Radiant";
+  if(v.energy>.5&&v.warmth<.5)return"Electric";
+  return"Hypnotic";
+}
+
+// ── WebGL SETUP ───────────────────────────────────────────────────────────────
+const canvas=document.getElementById("canvas");
+const gl=canvas.getContext("webgl",{antialias:true,alpha:false,preserveDrawingBuffer:true,
+  premultipliedAlpha:false});
+
+if(!gl){ document.body.innerHTML='<div style="color:white;padding:40px;font-family:sans-serif">WebGL not supported on this device.</div>'; }
+
+function compileShader(src,type){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))
+    console.error("Shader error:",gl.getShaderInfoLog(s));
+  return s;
+}
+function makeProgram(vId,fId){
+  const v=compileShader(document.getElementById(vId).text,gl.VERTEX_SHADER);
+  const f=compileShader(document.getElementById(fId).text,gl.FRAGMENT_SHADER);
+  const p=gl.createProgram();
+  gl.attachShader(p,v); gl.attachShader(p,f); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))
+    console.error("Program error:",gl.getProgramInfoLog(p));
+  return p;
+}
+
+const particleProg = makeProgram("vert-shader","frag-shader");
+const auroraProg   = makeProgram("aurora-vert","aurora-frag");
+
+// Aurora quad
+const quadVerts=new Float32Array([-1,-1,1,-1,-1,1,1,1]);
+const quadBuf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER,quadVerts,gl.STATIC_DRAW);
+
+// ── MATH UTILS ───────────────────────────────────────────────────────────────
+function perspective(fov,asp,near,far){
+  const f=1/Math.tan(fov/2),nf=1/(near-far);
+  return new Float32Array([f/asp,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+}
+function lookAt(eye,center,up){
+  const z=norm(sub(eye,center)), x=norm(cross(up,z)), y=cross(z,x);
+  return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+    -dot(x,eye),-dot(y,eye),-dot(z,eye),1]);
+}
+const norm=v=>{const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])||1;return[v[0]/l,v[1]/l,v[2]/l]};
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+
+let projMat=perspective(Math.PI/3,1,0.1,100);
+const viewMat=lookAt([0,0,5],[0,0,0],[0,1,0]);
+
+function resizeGL(){
+  canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+  gl.viewport(0,0,canvas.width,canvas.height);
+  projMat=perspective(Math.PI/3,canvas.width/canvas.height,0.1,100);
+}
+resizeGL();
+window.addEventListener("resize",resizeGL);
+
+// ── PARTICLE BUFFERS ─────────────────────────────────────────────────────────
+let ptBuf={pos:null,size:null,col:null,alpha:null,phase:null,shell:null,count:0};
+
+function buildParticles(v){
+  const N=v.count;
+  const pos  =new Float32Array(N*3);
+  const col  =new Float32Array(N*3);
+  const sizes=new Float32Array(N);
+  const alpha=new Float32Array(N);
+  const phase=new Float32Array(N);
+  const shell=new Float32Array(N);
+
+  for(let i=0;i<N;i++){
+    // Even shell distribution — ensures particles spread across the full sphere volume
+    const sh=Math.random();
+    const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+    // Radius: minimum 0.8 so nothing collapses to centre; max 2.2 world units
+    const r = 0.8 + sh * 1.4;
+    pos[i*3]  =r*Math.sin(ph)*Math.cos(th);
+    pos[i*3+1]=r*Math.sin(ph)*Math.sin(th);
+    pos[i*3+2]=r*Math.cos(ph);
+
+    // Colour: blend primary/secondary with moderate brightness — not over-driven
+    const bl=Math.random(), bo=0.55+Math.random()*.55;
+    col[i*3]  =Math.min(0.95,(v.r*bl+v.sr*(1-bl))*bo);
+    col[i*3+1]=Math.min(0.95,(v.g*bl+v.sg*(1-bl))*bo);
+    col[i*3+2]=Math.min(0.95,(v.b*bl+v.sb*(1-bl))*bo);
+
+    // Inner core particles slightly larger; outer ones tiny
+    const isCoreParticle = sh < 0.15;
+    sizes[i] = v.size * (isCoreParticle ? 1.8+Math.random() : 0.4+Math.random()*0.9);
+    // Alpha: inner brighter, outer translucent — prevents centre whiteout
+    alpha[i] = isCoreParticle ? 0.35+Math.random()*0.35 : 0.08+Math.random()*0.55;
+    phase[i] = Math.random()*Math.PI*2;
+    shell[i] = sh;
+  }
+
+  function mkBuf(data,size){
+    const b=gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER,b);
+    gl.bufferData(gl.ARRAY_BUFFER,data,gl.STATIC_DRAW);
+    return{buf:b,size};
+  }
+
+  // Clean up old
+  if(ptBuf.pos) [ptBuf.pos,ptBuf.size,ptBuf.col,ptBuf.alpha,ptBuf.phase,ptBuf.shell]
+    .forEach(b=>{if(b)gl.deleteBuffer(b.buf)});
+
+  ptBuf={
+    pos:  mkBuf(pos,3),
+    col:  mkBuf(col,3),
+    size: mkBuf(sizes,1),
+    alpha:mkBuf(alpha,1),
+    phase:mkBuf(phase,1),
+    shell:mkBuf(shell,1),
+    count:N,
+  };
+}
+
+function bindAttr(prog,name,bufObj){
+  const loc=gl.getAttribLocation(prog,name);
+  if(loc<0) return;
+  gl.bindBuffer(gl.ARRAY_BUFFER,bufObj.buf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc,bufObj.size,gl.FLOAT,false,0,0);
+}
+
+// ── AUDIO STATE ───────────────────────────────────────────────────────────────
+// Multi-band: bass/mid/high + smoothed
+let aBass=0,aMid=0,aHigh=0,aRaw=0;
+let sBass=0,sMid=0,sHigh=0; // smoothed
+
+// ── ANIMATION LOOP ────────────────────────────────────────────────────────────
+let vis=null, clock=0, rotY=0, rotX=0;
+
+function render(){
+  requestAnimationFrame(render);
+  if(!vis||!ptBuf.count) return;
+  clock+=0.016;
+
+  // Smooth audio bands (low-pass filter — feels organic not jittery)
+  const smooth=0.14;
+  sBass=sBass*(1-smooth)+aBass*smooth;
+  sMid =sMid *(1-smooth)+aMid *smooth;
+  sHigh=sHigh*(1-smooth)+aHigh*smooth;
+
+  // Rotation — continuous, tempo-driven, bass can nudge it
+  rotY+=vis.rotSpd*(1+sBass*.25);
+  rotX+=vis.rotSpd*0.27*(1+sMid*.15);
+
+  // Breath — slow sine + audio
+  const breath=1+Math.sin(clock*vis.pulse*.38)*.075*vis.energy;
+
+  gl.clearColor(8/255,8/255,15/255,1);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+  // ── AURORA ────
+  gl.useProgram(auroraProg);
+  gl.disable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA); // soft blend — colour tints, no blowout
+
+  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
+  const aLoc=gl.getAttribLocation(auroraProg,"aPos");
+  gl.enableVertexAttribArray(aLoc);
+  gl.vertexAttribPointer(aLoc,2,gl.FLOAT,false,0,0);
+
+  gl.uniform1f(gl.getUniformLocation(auroraProg,"uTime"),    clock);
+  gl.uniform3f(gl.getUniformLocation(auroraProg,"uCol1"),    vis.r,  vis.g,  vis.b);
+  gl.uniform3f(gl.getUniformLocation(auroraProg,"uCol2"),    vis.sr, vis.sg, vis.sb);
+  gl.uniform1f(gl.getUniformLocation(auroraProg,"uIntensity"),0.12+vis.fluid*.22);
+  gl.uniform1f(gl.getUniformLocation(auroraProg,"uBass"),    sBass);
+  gl.uniform1f(gl.getUniformLocation(auroraProg,"uMid"),     sMid);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  // ── PARTICLES ────
+  gl.useProgram(particleProg);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA,gl.ONE); // additive — no depth sorting needed
+  gl.disable(gl.DEPTH_TEST);
+
+  bindAttr(particleProg,"aPos",  ptBuf.pos);
+  bindAttr(particleProg,"aSize", ptBuf.size);
+  bindAttr(particleProg,"aCol",  ptBuf.col);
+  bindAttr(particleProg,"aAlpha",ptBuf.alpha);
+  bindAttr(particleProg,"aPhase",ptBuf.phase);
+  bindAttr(particleProg,"aShell",ptBuf.shell);
+
+  const u=name=>gl.getUniformLocation(particleProg,name);
+  gl.uniformMatrix4fv(u("uProj"), false,projMat);
+  gl.uniformMatrix4fv(u("uView"), false,viewMat);
+  gl.uniform1f(u("uTime"),   clock);
+  gl.uniform1f(u("uTurb"),   vis.turb);
+  gl.uniform1f(u("uEnergy"), vis.energy);
+  gl.uniform1f(u("uBass"),   sBass);
+  gl.uniform1f(u("uMid"),    sMid);
+  gl.uniform1f(u("uHigh"),   sHigh);
+  gl.uniform1f(u("uRotY"),   rotY);
+  gl.uniform1f(u("uRotX"),   rotX);
+  gl.uniform1f(u("uBreath"), breath);
+
+  gl.drawArrays(gl.POINTS,0,ptBuf.count);
+}
+render();
+
+// ── UI HELPERS ───────────────────────────────────────────────────────────────
+function accent(v,a=1){return`rgba(${Math.round(v.r*255)},${Math.round(v.g*255)},${Math.round(v.b*255)},${a})`;}
+let currentTrack=null,transitioning=false;
+
+function selectTrack(track){
+  if(transitioning)return;
+  transitioning=true;
+  document.querySelectorAll(".pill").forEach(p=>p.classList.remove("active"));
+  document.getElementById("pill-"+track.id)?.classList.add("active");
+  document.getElementById("bottom-info").classList.remove("show");
+
+  setTimeout(()=>{
+    currentTrack=track;
+    vis=mapV(track.f,track.origin);
+    buildParticles(vis);
+    updateUI(track,vis);
+    transitioning=false;
+    document.getElementById("bottom-info").classList.add("show");
+    const tn=document.getElementById("tname");
+    tn.style.animation="none";tn.offsetHeight;tn.style.animation="rise .5s cubic-bezier(.16,1,.3,1) both";
+  },330);
+}
+
+function updateUI(track,v){
+  const tn=document.getElementById("tname");
+  tn.textContent=track.name;
+  tn.style.color=accent(v,.92);
+  tn.style.textShadow=`0 0 45px ${accent(v,.5)},0 0 90px ${accent(v,.22)}`;
+  document.getElementById("tsub").textContent=`${track.artist}  ·  ${track.origin}`;
+  const il=track.inst.map(i=>ITEXTURES[i]||i).join(" · ");
+  document.getElementById("tbadges").innerHTML=`
+    <span class="badge" style="color:${accent(v,.85)};border-color:${accent(v,.32)}">${mood(v)}</span>
+    <span class="badge" style="color:rgba(255,255,255,.3)">${v.label}</span>
+    <span class="badge" style="color:rgba(255,255,255,.3)">${il}</span>`;
+
+  const pList=[
+    {l:"Energy",    val:v.energy},
+    {l:"Warmth",    val:v.warmth},
+    {l:"Turbulence",val:v.turb},
+    {l:"Fluidity",  val:v.fluid},
+    {l:"Density",   val:v.density},
+    {l:"Bloom",     val:Math.min(1,v.bloom/1.4)},
+  ];
+  document.getElementById("params").innerHTML=pList.map(p=>`
+    <div class="param-row"><div class="param-head">
+      <span class="param-label">${p.l.toUpperCase()}</span>
+      <span class="param-val">${(p.val*100).toFixed(0)}</span>
+    </div><div class="bar-bg"><div class="bar-fill" style="width:${p.val*100}%;background:${accent(v,.72)}"></div></div></div>
+  `).join("");
+
+  const i=n=>Math.round(n*255);
+  document.getElementById("sig-p").textContent  = v.count.toLocaleString()+" particles";
+  document.getElementById("sig-b").textContent  = `${v.tempo?.toFixed(0)} BPM · ${track.mode}`;
+  document.getElementById("sig-pal").textContent= `${v.label} palette`;
+  document.getElementById("sw1").style.cssText=`background:rgb(${i(v.r)},${i(v.g)},${i(v.b)});box-shadow:0 0 10px ${accent(v,.7)}`;
+  document.getElementById("sw2").style.cssText=`background:rgb(${i(v.sr)},${i(v.sg)},${i(v.sb)});box-shadow:0 0 8px rgba(${i(v.sr)},${i(v.sg)},${i(v.sb)},.48)`;
+}
+
+const list=document.getElementById("track-list");
+TRACKS.forEach(t=>{
+  const el=document.createElement("div");
+  el.className="pill";el.id="pill-"+t.id;
+  el.innerHTML=`<div class="pill-name">${t.name}</div><div class="pill-artist">${t.artist}</div>`;
+  el.onclick=()=>selectTrack(t);
+  list.appendChild(el);
+});
+setTimeout(()=>selectTrack(TRACKS[0]),600);
+
+// ── MIC — MULTI-BAND ANALYSER ─────────────────────────────────────────────────
+let micCtx=null,micAnalyser=null,micStream=null,micRaf=null,micOn=false;
+const bandEls=[0,1,2,3,4,5,6,7].map(i=>document.getElementById("bb"+i));
+
+async function toggleMic(){
+  if(micOn){stopMic();return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    micCtx    = new(window.AudioContext||window.webkitAudioContext)();
+    micAnalyser=micCtx.createAnalyser();
+    micAnalyser.fftSize=1024;
+    micAnalyser.smoothingTimeConstant=0.75;
+    micCtx.createMediaStreamSource(stream).connect(micAnalyser);
+    const buf=new Uint8Array(micAnalyser.frequencyBinCount);
+    micStream=stream; micOn=true;
+
+    document.getElementById("btn-mic").classList.add("on");
+    document.getElementById("btn-mic").textContent="◉ Live";
+    document.getElementById("mic-label").classList.add("show");
+    document.getElementById("live-bars").classList.add("show");
+
+    const nyq    = micCtx.sampleRate/2;
+    const binHz  = nyq/micAnalyser.frequencyBinCount;
+    const bassEnd= Math.floor(250/binHz);
+    const midEnd = Math.floor(2500/binHz);
+    // 8 display bands across full spectrum
+    const bandSize=Math.floor(micAnalyser.frequencyBinCount/8);
+
+    const tick=()=>{
+      micRaf=requestAnimationFrame(tick);
+      micAnalyser.getByteFrequencyData(buf);
+
+      // Bass: 20-250Hz
+      let bSum=0; for(let i=0;i<bassEnd;i++) bSum+=buf[i];
+      aBass=(bSum/bassEnd)/255;
+
+      // Mid: 250-2500Hz
+      let mSum=0; for(let i=bassEnd;i<midEnd;i++) mSum+=buf[i];
+      aMid=(mSum/(midEnd-bassEnd))/255;
+
+      // High: 2500Hz+
+      let hSum=0; for(let i=midEnd;i<buf.length;i++) hSum+=buf[i];
+      aHigh=(hSum/(buf.length-midEnd))/255;
+
+      // Visual band bars
+      bandEls.forEach((el,bi)=>{
+        let s=0; const st=bi*bandSize;
+        for(let j=st;j<st+bandSize;j++) s+=buf[j];
+        const h=Math.max(2, (s/bandSize/255)*26);
+        el.style.height=h+"px";
+        if(vis) el.style.background=accent(vis,.6);
+      });
+    };
+    tick();
+  }catch(e){
+    alert("Mic access denied.\n\nOn iPhone go to:\nSettings → Safari → Microphone\n→ Allow for hedaaditya-coder.github.io");
+  }
+}
+
+function stopMic(){
+  if(micRaf)cancelAnimationFrame(micRaf);
+  if(micStream)micStream.getTracks().forEach(t=>t.stop());
+  if(micCtx)micCtx.close();
+  aBass=aMid=aHigh=sBass=sMid=sHigh=0;
+  micOn=false;
+  document.getElementById("btn-mic").classList.remove("on");
+  document.getElementById("btn-mic").textContent="◎ Mic";
+  document.getElementById("mic-label").classList.remove("show");
+  document.getElementById("live-bars").classList.remove("show");
+}
+
+// ── CAPTURE ───────────────────────────────────────────────────────────────────
+function captureFrame(){
+  const name=(currentTrack?.name||"frame").replace(/\s/g,"_");
+  // Force one render pass so preserveDrawingBuffer is populated
+  const a=document.createElement("a");
+  a.download=`synesthesia-${name}.png`;
+  a.href=canvas.toDataURL("image/png");
+  a.click();
+}
+</script>
+</body>
+</html>
